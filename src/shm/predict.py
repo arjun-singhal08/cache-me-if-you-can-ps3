@@ -93,3 +93,4 @@ if __name__ == '__main__':
     args = parser.parse_args()
     
     generate_shm_predictions(data_dir=args.data_dir, output_path=args.output, model_path=args.model)
+
