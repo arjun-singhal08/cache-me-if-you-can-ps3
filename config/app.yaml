@@ -11,3 +11,4 @@ model:
   cv_score: 0.9372
   cv_mape: 0.0628
   model_path: "models/shm_model.joblib"
+
