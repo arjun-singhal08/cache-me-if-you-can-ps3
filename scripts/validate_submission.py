@@ -1,105 +1,120 @@
 import os
 import sys
 import zipfile
+from pathlib import Path
 import pandas as pd
 import numpy as np
 
-def validate_shm(pred_file="predictions/shm_predictions.csv", test_dir=r"C:\Users\Arjun Singhal\NebulaX-Hackathon-ProblemStatement\PS3\02_Datasets\SHM\Test"):
-    print("=" * 60)
-    print("VALIDATING SHM PREDICTION FILE")
-    print("=" * 60)
+def validate_shm(pred_file="predictions/shm_predictions.csv", test_dir=None):
+    print("=" * 65)
+    print("STRICT SUBMISSION VALIDATION — SHM SUBSYSTEM")
+    print("=" * 65)
     
-    if not os.path.exists(pred_file):
-        print(f"[FAIL] Prediction file not found: {pred_file}")
+    pred_path = Path(pred_file)
+    if not pred_path.exists():
+        print(f"[FAIL] Prediction file not found: {pred_path}")
         return False
         
     try:
-        df = pd.read_csv(pred_file)
+        df = pd.read_csv(pred_path)
     except Exception as e:
-        print(f"[FAIL] Could not parse CSV: {e}")
+        print(f"[FAIL] Could not parse CSV file: {e}")
         return False
-        
-    # Check column names
+
+    # 1. Exact Column Names & Ordering
     expected_cols = ['file_id', 'prediction']
     if list(df.columns) != expected_cols:
-        print(f"[FAIL] Invalid columns. Expected {expected_cols}, got {list(df.columns)}")
+        print(f"[FAIL] Column mismatch. Expected exactly {expected_cols}, got {list(df.columns)}")
         return False
-    print("[PASS] Header check passed: ['file_id', 'prediction']")
-    
-    # Check expected test files
-    if os.path.exists(test_dir):
-        expected_files = sorted([f for f in os.listdir(test_dir) if f.endswith('.csv')])
-        pred_files = sorted(df['file_id'].tolist())
-        if pred_files != expected_files:
-            print(f"[FAIL] Mismatch in file_id rows. Expected {len(expected_files)} files, got {len(pred_files)}.")
-            missing = set(expected_files) - set(pred_files)
-            extra = set(pred_files) - set(expected_files)
-            if missing: print(f"  Missing: {missing}")
-            if extra: print(f"  Extra: {extra}")
-            return False
-        print(f"[PASS] Row count and file_id check passed: All {len(expected_files)} test files present.")
-    else:
-        if len(df) != 16:
-            print(f"[FAIL] Expected 16 rows, got {len(df)}")
-            return False
-            
-    # Check numeric predictions
-    if df['prediction'].isnull().any():
-        print("[FAIL] Found null or NaN values in 'prediction' column.")
+    print("[PASS] Header schema check passed: ['file_id', 'prediction']")
+
+    # 2. Row Count & Unique Filenames
+    if len(df) != 16:
+        print(f"[FAIL] Row count mismatch. Expected exactly 16 test predictions, got {len(df)}")
         return False
-        
+    print("[PASS] Row count check passed: Exactly 16 rows found.")
+
+    if not df['file_id'].is_unique:
+        print("[FAIL] Duplicate file_id entries found in submission file.")
+        return False
+    print("[PASS] Uniqueness check passed: All file_id entries are unique.")
+
+    expected_file_ids = [f"test{i:02d}.csv" for i in range(1, 17)]
+    actual_file_ids = sorted(df['file_id'].tolist())
+    if actual_file_ids != expected_file_ids:
+        print(f"[FAIL] Missing or unexpected test file IDs.")
+        print(f"  Expected: {expected_file_ids}")
+        print(f"  Actual:   {actual_file_ids}")
+        return False
+    print("[PASS] File ID matching check passed: Exactly test01.csv to test16.csv present.")
+
+    # 3. Numeric Float Types & Non-null / Finite Values
+    if df['prediction'].isna().any():
+        print("[FAIL] Found NaN/null values in 'prediction' column.")
+        return False
+
+    if np.isinf(df['prediction'].values).any():
+        print("[FAIL] Found infinite (Inf/-Inf) values in 'prediction' column.")
+        return False
+
     if not np.issubdtype(df['prediction'].dtype, np.number):
-        print(f"[FAIL] Predictions are not numeric: dtype is {df['prediction'].dtype}")
+        print(f"[FAIL] 'prediction' column is not numeric. Data type: {df['prediction'].dtype}")
         return False
-        
-    if (df['prediction'] <= 0).any():
-        print("[FAIL] Found non-positive damage prediction values (fatigue damage must be > 0).")
+    print("[PASS] Finite numeric check passed: Zero NaNs, zero Infs, strictly numeric float values.")
+
+    # 4. Physical Damage Value Bounds [0.0, 1.0]
+    preds = df['prediction'].values
+    if (preds < 0.0).any() or (preds > 1.0).any():
+        out_of_bounds = preds[(preds < 0.0) | (preds > 1.0)]
+        print(f"[FAIL] Predictions out of physical bounds [0.0, 1.0]: {out_of_bounds}")
         return False
-        
-    print("[PASS] Prediction values check passed: All values are valid positive numbers.")
-    print(f"\n[INFO] Preview of predictions:\n{df.head()}")
-    print("\n[SUCCESS] SHM PREDICTION SUBMISSION IS 100% VALID!")
+    print("[PASS] Physical bounds check passed: All predictions strictly lie within [0.0, 1.0].")
+
+    print("\n[INFO] Validated Submission Preview:")
+    print(df.to_string(index=False))
+    print("\n[SUCCESS] SHM SUBMISSION IS 100% VALID & COMPLIANT WITH COMPETITION RULES!")
     return True
 
+
 def package_and_validate_zip():
-    print("\n" + "=" * 60)
-    print("PACKAGING & VALIDATING PREDICTIONS.ZIP")
-    print("=" * 60)
-    
-    zip_name = "predictions.zip"
-    pred_dir = "predictions"
-    
-    files_to_zip = [f for f in os.listdir(pred_dir) if f.endswith('_predictions.csv')]
-    if not files_to_zip:
+    print("\n" + "=" * 65)
+    print("PACKAGING & VALIDATING PREDICTIONS.ZIP ARCHIVE")
+    print("=" * 65)
+
+    base_dir = Path(__file__).resolve().parents[1]
+    zip_path = base_dir / "predictions.zip"
+    pred_dir = base_dir / "predictions"
+
+    csv_files = list(pred_dir.glob("*_predictions.csv"))
+    if not csv_files:
         print(f"[FAIL] No prediction CSVs found in {pred_dir}")
         return False
-        
-    with zipfile.ZipFile(zip_name, 'w', zipfile.ZIP_DEFLATED) as zf:
-        for f in files_to_zip:
-            file_path = os.path.join(pred_dir, f)
-            zf.write(file_path, arcname=f)
-            print(f"  Added {f} to {zip_name}")
-            
-    # Test opening and verifying zip contents
-    with zipfile.ZipFile(zip_name, 'r') as zf:
+
+    with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+        for f in csv_files:
+            # Must be placed at root of ZIP with no subdirectories
+            zf.write(f, arcname=f.name)
+            print(f"  Archived {f.name} into {zip_path.name}")
+
+    with zipfile.ZipFile(zip_path, 'r') as zf:
         namelist = zf.namelist()
-        print(f"[PASS] Successfully opened {zip_name}. Contents: {namelist}")
+        print(f"[PASS] Successfully inspected {zip_path.name}. Contents: {namelist}")
         for name in namelist:
             if "/" in name or "\\" in name:
-                print(f"[FAIL] File {name} is in a subfolder inside zip. Must be at top level!")
+                print(f"[FAIL] Archive contains nested folders: {name}. Must be flat at root level!")
                 return False
-                
-    print(f"[SUCCESS] {zip_name} PACKAGED AND TESTED SUCCESSFULLY!")
+
+    print(f"[SUCCESS] {zip_path.name} PACKAGED AND TESTED SUCCESSFULLY!")
     return True
+
 
 if __name__ == '__main__':
     shm_ok = validate_shm()
     zip_ok = package_and_validate_zip()
-    
+
     if shm_ok and zip_ok:
-        print("\n[RESULT] ALL VALIDATION CHECKS PASSED PERFECTLY!")
+        print("\n[RESULT] ALL VALIDATION & ARCHIVING CHECKS PASSED PERFECTLY!")
         sys.exit(0)
     else:
-        print("\n[RESULT] VALIDATION CHECKS FAILED.")
+        print("\n[RESULT] VALIDATION FAILED.")
         sys.exit(1)
-
