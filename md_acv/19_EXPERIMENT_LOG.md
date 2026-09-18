@@ -56,4 +56,4 @@ Decision:
 - All six predicted rankings and explanation evidence:
 - Number of variants tried and model-selection limitations:
 
-The true-car entries above must be verified against the actual Train_Labels.csv before use; never infer labels from filenames.
+The true-car entries above were verified against the official Train_Labels.csv on 19 September 2026. Re-verify when the source dataset changes; never infer labels from filenames.

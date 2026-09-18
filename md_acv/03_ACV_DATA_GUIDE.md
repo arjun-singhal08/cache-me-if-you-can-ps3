@@ -48,7 +48,7 @@ Most files record about 8 parameters per car:
 - load-halved status;
 - information-valid status.
 
-One training file contains more than 60 parameters per car.
+`acv_case_04.xlsx` contains 483 columns: three identifying columns and 480 car-parameter columns. Counts vary by car from 59 to 62. The other five training workbooks and the current test workbook each contain 67 columns (three identifying columns plus eight parameters for each of eight cars). These counts were verified from the actual workbook headers on 19 September 2026; do not use them as fixed positional schemas.
 
 Therefore:
 - never hard-code column positions;
