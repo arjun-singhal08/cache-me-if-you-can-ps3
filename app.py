@@ -59,6 +59,9 @@ def load_shm_model():
     model_path = "models/shm_model.joblib"
     if os.path.exists(model_path):
         return joblib.load(model_path)
+    fallback_path = "models/shm_model.pkl"
+    if os.path.exists(fallback_path):
+        return joblib.load(fallback_path)
     return None
 
 if subsystem.startswith("Subsystem 1:"):
@@ -69,7 +72,17 @@ if subsystem.startswith("Subsystem 1:"):
     
     payload = load_shm_model()
     if payload is None:
-        st.error("SHM model not found at `models/shm_model.joblib`. Please train the model first.")
+        st.warning("⚠️ Trained model file `models/shm_model.joblib` is not yet present on your machine.")
+        st.info("You can either run `python -m src.shm.train` in your terminal or click the button below to train it automatically:")
+        if st.button("🚀 Train SHM Model Now"):
+            with st.spinner("Training ExtraTrees model on training dataset..."):
+                try:
+                    from src.shm.train import train_shm
+                    train_shm()
+                    st.success("Model trained successfully! Reloading...")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Error training model: {e}")
         st.stop()
         
     model = payload['model']
@@ -107,7 +120,7 @@ if subsystem.startswith("Subsystem 1:"):
                 signal_data = df_test.iloc[:, 0].values
                 filename_display = selected_test
         else:
-            st.info("Organiser test folder not found locally.")
+            st.info("Organiser test folder not found locally. Please upload a CSV file above.")
 
     if signal_data is not None:
         with st.spinner("Extracting Rainflow cycles and computing fatigue damage..."):
@@ -142,7 +155,6 @@ if subsystem.startswith("Subsystem 1:"):
         
         with col_plot1:
             st.markdown("**Dynamic Stress Waveform (Sampled)**")
-            # Downsample for fast plotting
             step = max(1, len(signal_data) // 2000)
             fig, ax = plt.subplots(figsize=(7, 3.5))
             ax.plot(np.arange(0, len(signal_data), step), signal_data[::step], color='#1E40AF', lw=0.8)
