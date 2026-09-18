@@ -76,6 +76,70 @@ def validate_shm(pred_file="predictions/shm_predictions.csv", test_dir=None):
     return True
 
 
+def validate_rail(pred_file="predictions/rail_predictions.csv"):
+    print("\n" + "=" * 65)
+    print("STRICT SUBMISSION VALIDATION — RAIL CORRUGATION SUBSYSTEM")
+    print("=" * 65)
+
+    pred_path = Path(pred_file)
+    if not pred_path.exists():
+        print(f"[FAIL] Prediction file not found: {pred_path}")
+        return False
+
+    try:
+        df = pd.read_csv(pred_path)
+    except Exception as e:
+        print(f"[FAIL] Could not parse CSV file: {e}")
+        return False
+
+    # 1. Exact Column Names & Ordering
+    expected_cols = ['file_id', 'prediction']
+    if list(df.columns) != expected_cols:
+        print(f"[FAIL] Column mismatch. Expected exactly {expected_cols}, got {list(df.columns)}")
+        return False
+    print("[PASS] Header schema check passed: ['file_id', 'prediction']")
+
+    # 2. Row Count & Unique Filenames
+    if len(df) != 68:
+        print(f"[FAIL] Row count mismatch. Expected exactly 68 test predictions, got {len(df)}")
+        return False
+    print("[PASS] Row count check passed: Exactly 68 rows found.")
+
+    if not df['file_id'].is_unique:
+        print("[FAIL] Duplicate file_id entries found in submission file.")
+        return False
+    print("[PASS] Uniqueness check passed: All file_id entries are unique.")
+
+    expected_file_ids = set([f"Test{i}.csv" for i in range(1, 69)])
+    actual_file_ids = set(df['file_id'].tolist())
+    if actual_file_ids != expected_file_ids:
+        missing = expected_file_ids - actual_file_ids
+        unexpected = actual_file_ids - expected_file_ids
+        print(f"[FAIL] Missing or unexpected test file IDs. Missing: {missing}, Unexpected: {unexpected}")
+        return False
+    print("[PASS] File ID matching check passed: Exactly Test1.csv to Test68.csv present.")
+
+    # 3. Categorical Class Values in ['Normal', 'Side I', 'Side II']
+    allowed_classes = {'Normal', 'Side I', 'Side II'}
+    actual_classes = set(df['prediction'].unique())
+    invalid_classes = actual_classes - allowed_classes
+    if invalid_classes:
+        print(f"[FAIL] Invalid classes found in 'prediction' column: {invalid_classes}")
+        return False
+    print(f"[PASS] Class validity check passed: All predictions in {allowed_classes}.")
+
+    # 4. Null & Non-string checks
+    if df['prediction'].isna().any():
+        print("[FAIL] Found NaN/null values in 'prediction' column.")
+        return False
+    print("[PASS] Null check passed: Zero NaNs found.")
+
+    print("\n[INFO] Validated Rail Submission Breakdown:")
+    print(df['prediction'].value_counts())
+    print("\n[SUCCESS] RAIL SUBMISSION IS 100% VALID & COMPLIANT WITH COMPETITION RULES!")
+    return True
+
+
 def package_and_validate_zip():
     print("\n" + "=" * 65)
     print("PACKAGING & VALIDATING PREDICTIONS.ZIP ARCHIVE")
@@ -85,7 +149,7 @@ def package_and_validate_zip():
     zip_path = base_dir / "predictions.zip"
     pred_dir = base_dir / "predictions"
 
-    csv_files = list(pred_dir.glob("*_predictions.csv"))
+    csv_files = sorted(list(pred_dir.glob("*_predictions.csv")))
     if not csv_files:
         print(f"[FAIL] No prediction CSVs found in {pred_dir}")
         return False
@@ -110,9 +174,10 @@ def package_and_validate_zip():
 
 if __name__ == '__main__':
     shm_ok = validate_shm()
+    rail_ok = validate_rail()
     zip_ok = package_and_validate_zip()
 
-    if shm_ok and zip_ok:
+    if shm_ok and rail_ok and zip_ok:
         print("\n[RESULT] ALL VALIDATION & ARCHIVING CHECKS PASSED PERFECTLY!")
         sys.exit(0)
     else:

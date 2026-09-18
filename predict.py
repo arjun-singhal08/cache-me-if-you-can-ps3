@@ -6,6 +6,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from src.shm.predict import generate_shm_predictions
+from src.rail.predict import generate_rail_predictions
 
 def main():
     parser = argparse.ArgumentParser(description="LTA NebulaX PS3 Subsystem Predictor CLI")
@@ -17,6 +18,9 @@ def main():
 
     if args.subsystem == "shm":
         generate_shm_predictions(input_target=args.input, output_path=args.output, model_path=args.model)
+    elif args.subsystem == "rail":
+        out = args.output or "predictions/rail_predictions.csv"
+        generate_rail_predictions(input_path=args.input, output_path=out, model_path=args.model)
     else:
         print(f"Subsystem {args.subsystem} scheduled in Development Plan.")
 
