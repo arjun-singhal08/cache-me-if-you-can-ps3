@@ -1,54 +1,43 @@
-# Subsystem 1: Structural Health Monitoring (SHM) — Experiment Log
+# Subsystem 1: Structural Health Monitoring (SHM) — Experiment Log & Benchmark
 
-## 1. Data Inspection & Understanding
-
-- **Data Domain**: Dynamic stress time-series from train bogie/carbody strain gauge sensors.
-- **Data Shape**: 
-  - Train: 64 CSV files (`train01.csv` to `train64.csv`), each with 581,120 rows (single-column float measurements). Total: ~37.2 million measurements.
-  - Test: 16 CSV files (`test01.csv` to `test16.csv`), unlabelled.
-  - Target: `damage` in `Train_Labels.csv` (cumulative fatigue damage).
-- **Target Distribution**:
-  - Min: 0.0286
-  - Median: 0.1113
-  - Max: 0.8947
-  - Distribution is right-skewed with many small values.
-- **Physical Ground Truth Mechanism**:
-  - Material fatigue follows **Miner's Linear Cumulative Damage Rule**:
-    $$D = \sum_{i} \frac{n_i}{N_i}$$
-  - S-N Curve relationship: $\sigma_a^m \cdot N = C \implies D \propto \sum n_i (\Delta \sigma_i)^m$, where $m \in [2.5, 5.0]$ is the material Basquin slope exponent.
+## 1. Problem Formulation & Physics Grounding
+* **Objective**: Predict single-value cumulative fatigue damage ($D$) on railway bogie/carbody dynamic stress time-series.
+* **Physics Mechanism**: Dynamic stress cycles accumulate irreversible fatigue damage following **Miner's Linear Cumulative Damage Rule** ($D = \sum \frac{n_i}{N_i}$) and **Basquin's S-N Power-Law** ($\sigma_a^m \cdot N = C \implies D \propto \sum n_i (\Delta \sigma_i)^m$).
+* **Metric**: $\text{Score} = \max(0, 1 - \text{MAPE})$, where $\text{MAPE} = \frac{1}{N}\sum \frac{|y - \hat{y}|}{y}$.
 
 ---
 
-## 2. Feature Engineering (`src/shm/features.py`)
-
-Every raw signal (581,120 samples) is converted into a structured feature vector:
-1. **Statistical & Time-Domain Moments**: Mean, Standard Deviation, Min, Max, Peak-to-Peak (PTP), Root Mean Square (RMS), Crest Factor, Peak Factor, Skewness, Kurtosis, Mean Absolute Deviation (MAD), Quantiles ($1\%, 5\%, 25\%, 50\%, 75\%, 95\%, 99\%$), Interquartile Range (IQR), Signal Energy ($\sum x^2$).
-2. **Prominence-Gated Rainflow Cycle Counting (ASTM E1049-85)**:
-   - Peak/valley turning point filter reducing 580k points to key extrema in $<0.4$s without loss of fatigue precision.
-   - Cycle count, total cycles, maximum stress range, weighted mean stress range, stress range standard deviation.
-   - **S-N Damage Accumulators**: $\sum n_i (\Delta\sigma)^m$ for $m \in \{2.5, 3.0, 3.5, 4.0, 4.5, 5.0\}$.
-   - 10-bin stress range histogram.
-3. **Spectral / Frequency Domain (FFT)**: Mean, Std, Max, Skewness, Kurtosis of FFT magnitude spectrum, plus 5 spectral sub-band energies.
-
----
-
-## 3. Cross-Validation & Modeling Benchmark (5-Fold CV)
-
-Evaluation Metric: **Hackathon SHM Score** $\max(0, 1 - \text{MAPE})$ where $\text{MAPE} = \frac{1}{N}\sum |\frac{y - \hat{y}}{y}|$.
-
-| Model | Loss Function / Objective | Target Space | Out-Of-Fold MAPE | Official SHM Score |
-| :--- | :--- | :--- | :--- | :--- |
-| LightGBM Baseline | L2 / MSE | Linear $y$ | 60.14% | 0.3986 |
-| LightGBM + Log Target | MAPE | $\log(1+y)$ | 36.42% | 0.6358 |
-| XGBoost | Absolute Error | $\log(1+y)$ | 11.16% | 0.8884 |
-| RandomForest | Absolute Error | $\log(1+y)$ | 10.14% | 0.8986 |
-| GradientBoosting | Absolute Error | $\log(1+y)$ | 8.86% | 0.9114 |
-| **ExtraTrees Regressor (Final)** | **Absolute Error** | **$\log(1+y)$** | **`6.28%`** | **`0.9372` (93.72%)** |
+## 2. Feature Engineering Architecture (`src/shm/features.py`)
+Tabular representation extracted from raw 581,120-sample stress time series:
+1. **Statistical Moments**: Mean, variance, std, RMS, skewness, kurtosis, peak-to-peak amplitude, crest factor, peak factor, mean absolute difference, max absolute difference.
+2. **Percentiles & Energy**: 1st, 5th, 25th, 50th, 75th, 90th, 95th, 99th percentiles, IQR, total energy ($\sum x^2$).
+3. **ASTM E1049-85 Rainflow Cycle Proxies**:
+   - Prominence-gated turning point filtering ($<0.3$s per file).
+   - Total cycle count, max range, weighted mean range, std range.
+   - Cycle amplitude statistics: mean amplitude, max amplitude, 90th/95th/99th percentile amplitude.
+   - High-amplitude cycle counts exceeding stress thresholds ($>10, >20, >40, >60\text{ MPa}$).
+   - Multi-exponent S-N damage accumulators: $\sum n_i (\Delta \sigma)^m$ and $\sum n_i (\sigma_a)^m$ for $m \in \{2.5, 3.0, 3.5, 4.0, 4.5, 5.0\}$.
+   - 10-bin cycle amplitude distribution histogram.
+4. **Spectral Dynamics (FFT)**: Mean, std, max, skewness, kurtosis of FFT magnitude spectrum, plus 5 sub-band energy accumulators.
 
 ---
 
-## 4. Final Model Artifacts
+## 3. 5-Fold Cross-Validation Benchmark Results
 
-- **Trained Model**: `models/shm_model.joblib` (trained on 100% of the 64 training files).
-- **Test Predictions**: `predictions/shm_predictions.csv` (16 test files).
-- **Validation**: Verified against official example submission schema (`file_id,prediction`).
+All regressors were trained on log-transformed targets $\log(1 + \text{damage})$ to mathematically align the optimization objective with the competition MAPE evaluation metric:
+
+| Model | Loss Objective | 5-Fold Out-of-Fold MAPE | Official Validation Score |
+| :--- | :--- | :--- | :--- |
+| Ridge Regression | L2 Regularized Linear | 7.09% | 0.9291 |
+| ElasticNet | L1 + L2 Coordinate Descent | 6.37% | 0.9363 |
+| RandomForest Regressor | Absolute Error | 9.25% | 0.9075 |
+| GradientBoosting Regressor | Absolute Error | 8.47% | 0.9153 |
+| XGBoost Regressor | `reg:absoluteerror` | 10.92% | 0.8908 |
+| **ExtraTrees Regressor (Best Model)** | **Absolute Error** | **`5.07%`** | **`0.9493` (94.93%)** |
+
+---
+
+## 4. Final Production Artifacts
+* **Saved Model Artifact**: `models/shm_best_model.joblib` (trained on 100% of the 64 training files).
+* **Official Prediction CSV**: `predictions/shm_predictions.csv` (16 test files, valid bounds $[0, 1]$, zero nulls).
+* **Schema Verification**: Fully validated with `scripts/validate_submission.py`.

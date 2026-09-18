@@ -44,3 +44,4 @@ def validate_input_signal(file_or_data) -> Tuple[bool, str, Optional[np.ndarray]
         
     except Exception as e:
         return False, f"Error validating signal: {str(e)}", None
+

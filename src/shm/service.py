@@ -70,3 +70,4 @@ class SHMService:
             'explanation': explanation,
             'cv_score': self.cv_score
         }
+

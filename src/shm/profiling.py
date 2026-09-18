@@ -29,3 +29,4 @@ def profile_signal(signal: np.ndarray) -> Dict[str, Any]:
         'q01': float(q1),
         'q99': float(q99)
     }
+

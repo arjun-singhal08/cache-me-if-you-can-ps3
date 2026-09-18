@@ -59,3 +59,4 @@ def extract_fatigue_features(signal: np.ndarray, ptp_val: float) -> Dict[str, An
             feats[f'rf_bin_{i}'] = 0.0
             
     return feats
+
