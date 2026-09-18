@@ -1,0 +1,52 @@
+segmentation:
+  min_segment_len: 100
+  max_segment_len: 300
+  position_threshold: 50
+  pelt_penalty: 10
+  refinement_window_ms: 500
+  min_gap_between_segments: 200
+
+features:
+  position_grid_points: 50
+  spectral_nperseg: 64
+  spectral_noverlap: 32
+
+classification:
+  xgb:
+    n_estimators: 500
+    max_depth: 6
+    learning_rate: 0.05
+    scale_pos_weight: 2.67
+    subsample: 0.8
+    colsample_bytree: 0.8
+    eval_metric: "auc"
+    random_state: 42
+  lgbm:
+    n_estimators: 500
+    max_depth: 6
+    learning_rate: 0.05
+    class_weight: "balanced"
+    subsample: 0.8
+    colsample_bytree: 0.8
+    random_state: 42
+  tcn:
+    n_layers: 4
+    kernel_size: 3
+    channels: 64
+    dropout: 0.2
+    epochs: 50
+    batch_size: 32
+    learning_rate: 0.001
+  meta:
+    C: 1.0
+    random_state: 42
+
+postprocess:
+  conf_threshold: 0.35
+  merge_gap_ms: 500
+  nms_iou_threshold: 0.3
+  min_segment_duration_ms: 500
+
+validation:
+  n_splits: 5
+  random_state: 42
