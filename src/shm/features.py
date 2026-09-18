@@ -131,3 +131,4 @@ def extract_features(file_or_signal) -> dict:
         feats[f'fft_band_{b}_energy'] = float(np.sum(band_vals ** 2)) if len(band_vals) > 0 else 0.0
 
     return feats
+

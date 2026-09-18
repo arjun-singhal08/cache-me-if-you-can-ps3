@@ -1,16 +1,15 @@
 import os
 import io
 import glob
-import joblib
 import numpy as np
 import pandas as pd
 import streamlit as st
 import matplotlib.pyplot as plt
 
-from src.shm.features import extract_features
+from src.shm.service import SHMService
 
 st.set_page_config(
-    page_title="NebulaX — Train Condition Monitoring (PS3)",
+    page_title="SHM Engineer Assistant — NebulaX 2026",
     page_icon="🚆",
     layout="wide"
 )
@@ -27,23 +26,23 @@ st.markdown("""
     .sub-header {
         font-size: 1.1rem;
         color: #4B5563;
-        margin-bottom: 1.5rem;
+        margin-bottom: 1.2rem;
     }
-    .metric-card {
-        background-color: #F3F4F6;
-        border-radius: 10px;
-        padding: 20px;
-        text-align: center;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    .report-box {
+        background-color: #F8FAFC;
+        border-left: 5px solid #2563EB;
+        padding: 18px;
+        border-radius: 8px;
+        margin-top: 15px;
+        margin-bottom: 15px;
     }
 </style>
 """, unsafe_allow_html=True)
 
-st.markdown('<div class="main-header">🚆 NebulaX 2026 — Train Condition Monitoring</div>', unsafe_allow_html=True)
-st.markdown('<div class="sub-header">Problem Statement 3 | Team: Cache Me If You Can</div>', unsafe_allow_html=True)
+st.markdown('<div class="main-header">🚆 NebulaX 2026 — SHM Engineer Assistant</div>', unsafe_allow_html=True)
+st.markdown('<div class="sub-header">Train Condition Monitoring (PS3) | Team: Cache Me If You Can</div>', unsafe_allow_html=True)
 
-# Sidebar navigation
-st.sidebar.title("Subsystem Selection")
+# Subsystem Selector
 subsystem = st.sidebar.selectbox(
     "Choose Subsystem",
     [
@@ -55,143 +54,127 @@ subsystem = st.sidebar.selectbox(
 )
 
 @st.cache_resource
-def load_shm_model():
-    model_path = "models/shm_model.joblib"
-    if os.path.exists(model_path):
-        return joblib.load(model_path)
-    fallback_path = "models/shm_model.pkl"
-    if os.path.exists(fallback_path):
-        return joblib.load(fallback_path)
-    return None
+def get_shm_service():
+    return SHMService()
+
+service = get_shm_service()
 
 if subsystem.startswith("Subsystem 1:"):
-    st.header("🔬 Subsystem 1: Structural Health Monitoring (SHM)")
     st.markdown("""
-    Predicts **cumulative fatigue damage** ($D$) on railway bogie/carbody structures using **ASTM Rainflow Cycle Counting**, S-N curve power accumulators, and machine learning.
+    Welcome to the **SHM Engineer Assistant**. This dashboard performs automated **signal profiling, ASTM Rainflow cycle counting, cumulative fatigue damage regression**, and generates an **engineering diagnostic report** for train bogies and structural carbodies.
     """)
     
-    payload = load_shm_model()
-    if payload is None:
-        st.warning("⚠️ Trained model file `models/shm_model.joblib` is not yet present on your machine.")
-        st.info("You can either run `python -m src.shm.train` in your terminal or click the button below to train it automatically:")
-        if st.button("🚀 Train SHM Model Now"):
-            with st.spinner("Training ExtraTrees model on training dataset..."):
-                try:
-                    from src.shm.train import train_shm
-                    train_shm()
-                    st.success("Model trained successfully! Reloading...")
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Error training model: {e}")
-        st.stop()
-        
-    model = payload['model']
-    feature_names = payload['feature_names']
-    cv_score = payload.get('cv_score', 0.9372)
-    
-    col_info1, col_info2, col_info3 = st.columns(3)
-    col_info1.metric("Validation Accuracy Score", f"{cv_score*100:.2f}%")
-    col_info2.metric("Cross-Validation MAPE", f"{(1-cv_score)*100:.2f}%")
-    col_info3.metric("Standard Used", "ASTM E1049-85 Rainflow")
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Validation Accuracy Score", f"{service.cv_score*100:.2f}%")
+    col2.metric("Cross-Validation MAPE", f"{(1-service.cv_score)*100:.2f}%")
+    col3.metric("Standard Used", "ASTM E1049-85 Rainflow")
     
     st.write("---")
     
-    # Input options: Upload or Sample Test File
-    input_tab1, input_tab2 = st.tabs(["📂 Upload Stress Signal CSV", "🧪 Test Dataset Quick Run"])
+    if not service.is_model_loaded():
+        st.warning("⚠️ Model weights not found on disk.")
+        if st.button("🚀 Train Model Now"):
+            with st.spinner("Training ExtraTrees model..."):
+                from src.shm.train import train_shm
+                train_shm()
+                st.success("Model trained! Reloading...")
+                st.rerun()
+        st.stop()
+        
+    input_tab1, input_tab2 = st.tabs(["📂 Upload Stress Signal CSV", "🧪 Held-Out Test Set Quick Run"])
     
-    signal_data = None
-    filename_display = "uploaded_signal.csv"
+    selected_input = None
+    input_filename = "uploaded_stress_data.csv"
     
     with input_tab1:
-        uploaded_file = st.file_uploader("Upload 1D Dynamic Stress CSV file (single column of float values)", type=["csv"])
+        uploaded_file = st.file_uploader("Upload 1D Dynamic Stress CSV file", type=["csv"])
         if uploaded_file is not None:
-            df_upload = pd.read_csv(uploaded_file, header=None)
-            signal_data = df_upload.iloc[:, 0].values
-            filename_display = uploaded_file.name
+            selected_input = uploaded_file
+            input_filename = uploaded_file.name
             
     with input_tab2:
         test_dir = r"C:\Users\Arjun Singhal\NebulaX-Hackathon-ProblemStatement\PS3\02_Datasets\SHM\Test"
         if os.path.exists(test_dir):
             test_files = sorted([f for f in os.listdir(test_dir) if f.endswith('.csv')])
-            selected_test = st.selectbox("Select a test file from official held-out test set:", test_files)
-            if st.button("Run Prediction on Selected File"):
-                fp = os.path.join(test_dir, selected_test)
-                df_test = pd.read_csv(fp, header=None)
-                signal_data = df_test.iloc[:, 0].values
-                filename_display = selected_test
+            chosen_file = st.selectbox("Select test signal:", test_files)
+            if st.button("Run Analysis on Selected Test File"):
+                selected_input = os.path.join(test_dir, chosen_file)
+                input_filename = chosen_file
         else:
-            st.info("Organiser test folder not found locally. Please upload a CSV file above.")
+            st.info("Organiser test folder not found locally. Please use the upload tab above.")
 
-    if signal_data is not None:
-        with st.spinner("Extracting Rainflow cycles and computing fatigue damage..."):
-            feats = extract_features(signal_data)
-            df_feat = pd.DataFrame([feats])[feature_names]
-            pred_log = model.predict(df_feat)[0]
-            pred_damage = float(np.clip(np.expm1(pred_log), a_min=1e-6, a_max=None))
+    if selected_input is not None:
+        with st.spinner("Analyzing signal dynamics & running Rainflow cycle decomposition..."):
+            res = service.analyze_signal(selected_input, filename=input_filename)
             
-        st.subheader(f"📊 Results for `{filename_display}`")
-        
-        # Risk assessment
-        if pred_damage < 0.10:
-            risk_color = "green"
-            risk_level = "🟢 LOW RISK (Normal Operating Fatigue)"
-        elif pred_damage < 0.35:
-            risk_color = "orange"
-            risk_level = "🟡 MODERATE RISK (Scheduled Inspection Needed)"
+        if not res['success']:
+            st.error(f"❌ Validation Error: {res['error']}")
         else:
-            risk_color = "red"
-            risk_level = "🔴 HIGH RISK (Critical Bogie Fatigue Wear)"
+            prof = res['profile']
+            feats = res['features']
+            damage = res['predicted_damage']
+            signal = res['signal']
             
-        m1, m2, m3, m4 = st.columns(4)
-        m1.metric("Predicted Fatigue Damage ($D$)", f"{pred_damage:.4f}")
-        m2.metric("Total Extrema / Cycles", f"{int(feats['rf_total_cycles']):,}")
-        m3.metric("Max Stress Range", f"{feats['rf_max_range']:.2f} MPa")
-        m4.metric("RMS Stress", f"{feats['rms']:.2f} MPa")
-        
-        st.info(f"**Structural Assessment**: {risk_level}")
-        
-        # Plots
-        col_plot1, col_plot2 = st.columns(2)
-        
-        with col_plot1:
-            st.markdown("**Dynamic Stress Waveform (Sampled)**")
-            step = max(1, len(signal_data) // 2000)
-            fig, ax = plt.subplots(figsize=(7, 3.5))
-            ax.plot(np.arange(0, len(signal_data), step), signal_data[::step], color='#1E40AF', lw=0.8)
-            ax.set_ylabel("Stress (MPa)")
-            ax.set_xlabel("Time Samples")
-            ax.grid(True, linestyle='--', alpha=0.5)
-            st.pyplot(fig)
-            plt.close(fig)
+            st.success(f"✅ Analysis Complete for `{input_filename}` ({prof['n_samples']:,} data points)")
             
-        with col_plot2:
-            st.markdown("**Stress Range Histogram (Rainflow Bins)**")
-            fig, ax = plt.subplots(figsize=(7, 3.5))
-            bin_cols = [f'rf_bin_{i}' for i in range(10)]
-            bin_vals = [feats[b] for b in bin_cols]
-            ax.bar(range(10), bin_vals, color='#D97706', edgecolor='black', alpha=0.85)
-            ax.set_xlabel("Stress Range Bin (Low -> High Amplitude)")
-            ax.set_ylabel("Cycle Count")
-            ax.grid(True, linestyle='--', alpha=0.5)
-            st.pyplot(fig)
-            plt.close(fig)
+            # 1. Prediction & Key Metrics
+            st.subheader("🎯 1. Fatigue Damage Estimate & Key Indicators")
+            m1, m2, m3, m4 = st.columns(4)
+            m1.metric("Predicted Damage ($D$)", f"{damage:.4f}")
+            m2.metric("Total Stress Cycles", f"{int(feats['rf_total_cycles']):,}")
+            m3.metric("Peak Stress Range", f"{prof['peak_to_peak']:.2f} MPa")
+            m4.metric("RMS Stress", f"{prof['rms_stress']:.2f} MPa")
             
+            # 2. Engineering Explanation Report
+            st.subheader("📋 2. Engineer Diagnostic Report")
+            st.markdown(f"<div class='report-box'>{res['explanation']}</div>", unsafe_allow_html=True)
+            
+            # 3. Interactive Signal Plots
+            st.subheader("📈 3. Signal Waveform & Cycle Distribution")
+            col_p1, col_p2 = st.columns(2)
+            
+            with col_p1:
+                st.markdown("**Dynamic Stress Time Series (Sampled Waveform)**")
+                step = max(1, len(signal) // 2000)
+                fig, ax = plt.subplots(figsize=(7, 3.5))
+                ax.plot(np.arange(0, len(signal), step), signal[::step], color='#1E40AF', lw=0.8)
+                ax.set_ylabel("Stress (MPa)")
+                ax.set_xlabel("Time Step")
+                ax.grid(True, linestyle='--', alpha=0.5)
+                st.pyplot(fig)
+                plt.close(fig)
+                
+            with col_p2:
+                st.markdown("**Stress Amplitude Histogram (Rainflow Bins)**")
+                fig, ax = plt.subplots(figsize=(7, 3.5))
+                bin_cols = [f'rf_bin_{i}' for i in range(10)]
+                bin_vals = [feats[b] for b in bin_cols]
+                ax.bar(range(10), bin_vals, color='#D97706', edgecolor='black', alpha=0.85)
+                ax.set_xlabel("Stress Range Bin (Low -> High Amplitude)")
+                ax.set_ylabel("Cycle Count")
+                ax.grid(True, linestyle='--', alpha=0.5)
+                st.pyplot(fig)
+                plt.close(fig)
+                
+            # 4. Feature Summary Table
+            with st.expander("🔍 View All 53 Extracted Engineering Features"):
+                df_disp = pd.DataFrame([feats]).T.reset_index()
+                df_disp.columns = ["Feature Name", "Value"]
+                st.dataframe(df_disp, use_container_width=True)
+
     st.write("---")
-    st.subheader("📥 Submission Predictions Download")
+    st.subheader("📥 4. Submission File Download")
     pred_path = "predictions/shm_predictions.csv"
     if os.path.exists(pred_path):
         df_sub = pd.read_csv(pred_path)
         st.dataframe(df_sub, use_container_width=True)
         csv_bytes = df_sub.to_csv(index=False).encode('utf-8')
         st.download_button(
-            label="⬇️ Download shm_predictions.csv",
+            label="⬇️ Download Official shm_predictions.csv",
             data=csv_bytes,
             file_name="shm_predictions.csv",
             mime="text/csv"
         )
-    else:
-        st.warning("No predictions file found. Run `src/shm/train.py` to generate `predictions/shm_predictions.csv`.")
-
 else:
     st.header(f"{subsystem}")
-    st.info("Pipeline ready for implementation. Proceed to the next phase according to the Development Plan.")
+    st.info("Subsystem ready for implementation according to the PS3 Development Plan.")
