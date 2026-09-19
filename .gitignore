@@ -1,12 +1,19 @@
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# Python cache
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*$py.class
+
 # Data files (too large for git)
 data/
 ACV/data/
 Door/data/
-
-# Python cache
-__pycache__/
-*/__pycache__/
-*.pyc
 
 # IDE
 .vscode/
