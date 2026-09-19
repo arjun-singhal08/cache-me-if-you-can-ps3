@@ -1,14 +1,21 @@
-pandas>=2.0.0
-numpy>=1.24.0
-scikit-learn>=1.2.0
-lightgbm>=4.0.0
-xgboost>=1.7.0
-rainflow>=3.1.0
-scipy>=1.10.0
-tqdm>=4.65.0
-joblib>=1.3.0
-matplotlib>=3.7.0
-fastapi>=0.115.0
-uvicorn>=0.30.0
-python-multipart>=0.0.9
+# Combined requirements for NebulaX PS3 - Train Condition Monitoring
+# ACV Subsystem
+pandas>=2.0
+numpy>=1.24
+scikit-learn>=1.3
+lightgbm>=4.0
+xgboost>=2.0
+scipy>=1.10
+joblib>=1.3
+streamlit>=1.28
+plotly>=5.17
+optuna>=3.4
+tqdm>=4.66
+openpyxl>=3.1
 
+# Door Subsystem
+pyyaml>=6.0
+ruptures>=1.1.7
+
+# Common
+# (all above are shared)

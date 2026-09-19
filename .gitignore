@@ -1,13 +1,24 @@
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-.venv/
-env/
-venv/
+# Data files (too large for git)
+data/
+ACV/data/
+Door/data/
 
-# Project generated artifacts
-data_processed/
-output/
-*.pkl
+# Python cache
+__pycache__/
+*/__pycache__/
+*.pyc
+
+# IDE
+.vscode/
+.idea/
+
+# OS
 .DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Large raw data files
+*.parquet
+*.xlsx

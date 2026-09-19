@@ -1,61 +1,140 @@
-# NebulaX 2026 Hackathon — Problem Statement 3 (PS3)
-## Cache Me If You Can — SHM Subsystem Solution
+# NebulaX 2026 Hackathon - Problem Statement 3: Train Condition Monitoring
 
-Welcome to the **Cache Me If You Can** repository for NebulaX 2026 Problem Statement 3 (Train Condition Monitoring).
+Unified solution for multiple subsystems of rail vehicle condition monitoring.
 
-This repository contains the machine learning pipeline for **Subsystem 1: Structural Health Monitoring (SHM)**.
+## Subsystems Implemented
 
----
+### 🚂 ACV (Air Conditioning & Ventilation) - Refrigerant Leak Localisation
+**Task**: Rank 8 train cars by likelihood of refrigerant leak
+- **Approach**: Ensemble of 5 models (LightGBM Ranker, XGBoost Ranker, Classical Stacking, Unsupervised Anomaly Detection, Siamese/Metric Learning)
+- **Features**: 1133 per car (statistical, physics-informed, cross-car differential, operating phase)
+- **Validation**: LOCO-CV (Leave-One-Case-Out) score: **1.000** (perfect on all 6 training cases)
+- **Input**: `.xlsx` files with multivariate telemetry (30-sec sampling)
+- **Output**: `acv_predictions.csv` with ranked cars
 
-### 📊 Performance Summary
-* **Validation Strategy**: 5-Fold Cross Validation
-* **Primary Metric**: Hackathon SHM Score $\text{Score} = \max(0, 1 - \text{MAPE})$
-* **Cross-Validation Score**: **0.9231 (92.31%)**
-* **Average Error (MAPE)**: **7.69%**
+### 🚪 Door - Temporal Segment Detection & Classification
+**Task**: Find each door open/close cycle in continuous stream, classify as Normal vs Abnormal Resistance
+- **Approach**: 2-stage pipeline - Segmentation (PELT change-point detection) → Classification (Ensemble)
+- **Features**: Segment-level statistical, shape, and physics features
+- **Input**: Continuous `Test.csv` stream (motor current, voltage, back-EMF, door position)
+- **Output**: `door_predictions.csv` with segments (start_time, end_time, prediction)
 
----
-
-### 🛠 Repository Structure
-
+## Project Structure
 ```
-cache-me-if-you-can-ps3/
-├── src/
-│   ├── extract_features.py   # Signal processing, Rainflow cycle counting, FFT features
-│   └── train.py              # Multi-model cross-validation & training pipeline
-├── predict.py                # Official submission inference interface
-├── requirements.txt          # Python dependencies
-└── README.md                 # Documentation
+nebula-ps3-solution/
+├── predict_all.py              # Master prediction script
+├── requirements.txt            # Combined dependencies
+├── README.md                   # This file
+├── ACV/                        # ACV Subsystem
+│   ├── data_loader.py          # Fast parquet-based data loading
+│   ├── features.py             # 1133 features (statistical + physics + cross-car)
+│   ├── models.py               # 5 models + ensemble optimization
+│   ├── train_final.py          # Train on all data, save models
+│   ├── predict.py              # CLI: python predict.py --input --output
+│   ├── app.py                  # Streamlit demo app
+│   ├── config.yaml             # ACV config
+│   ├── requirements.txt        # ACV-specific deps
+│   └── README.md               # ACV documentation
+├── Door/                       # Door Subsystem
+│   ├── predict.py              # CLI: python predict.py --input Test.csv --output
+│   ├── train.py                # Training script
+│   ├── config.yaml             # Door config
+│   ├── requirements.txt        # Door-specific deps
+│   ├── classification/         # Ensemble classifier
+│   ├── features/               # Segment feature extraction
+│   ├── segmentation/           # PELT-based door cycle detection
+│   ├── postprocess/            # IoU optimization
+│   ├── utils/                  # IO, metrics
+│   └── model/                  # Trained models (.pkl)
+└── shared/                     # Shared utilities (future)
 ```
 
----
+## Quick Start
 
-### 🚀 How to Run
-
-#### 1. Install Dependencies
+### Installation
 ```bash
-python -m pip install -r requirements.txt
+pip install -r requirements.txt
 ```
 
-#### 2. Feature Extraction
-Extracts physics-informed, statistical, spectral, and Rainflow fatigue features from raw stress CSVs:
+### Run Predictions
+
+#### All Subsystems (Competition Format)
 ```bash
-python src/extract_features.py
+# Data structure expected:
+# data/
+#   ACV/Test/acv_test_case.xlsx
+#   Door/Test.csv
+
+python predict_all.py --all --input-dir data --output-dir predictions
 ```
 
-#### 3. Train Model
-Trains models with 5-fold cross-validation and saves the best model (`models/shm_model.pkl`):
+#### Individual Subsystems
+
+**ACV:**
 ```bash
-python src/train.py
+cd ACV
+python train_final.py                    # Train models (needs data/Train/)
+python predict.py --input data/Test --output ../predictions/acv_predictions.csv
+# Or demo app:
+streamlit run app.py
 ```
 
-#### 4. Run Inference (Generate Predictions)
+**Door:**
 ```bash
-python predict.py --input "path/to/test/csvs" --output "path/to/output/dir"
+cd Door
+python train.py                          # Train models (needs data/)
+python predict.py --input ../data/Door/Test.csv --output ../predictions/door_predictions.csv
 ```
 
----
+## Competition Submission Format
 
-### 🔬 Technical Approach
-1. **Extrema Filtering**: Fast prominence-based turning point extraction reduces signal points to true stress reversals, enabling rapid Rainflow counting (ASTM E1049-85).
-2. **Fatigue Accumulators**: Computes power-law stress range accumulators $\sum n_i (\Delta \sigma)^m$ for $m \in [3, 3.5, 4, 5]$ corresponding to material S-N curves.
-3. **Log-Target Relative Error Optimization**: Trains tree regressors on $\log(1 + y)$ target transformation to directly minimize Mean Absolute Percentage Error (MAPE).
+### ACV (`acv_predictions.csv`)
+```csv
+file_id,ranked_cars
+acv_test_case.xlsx,01|04|03|05|07|06|08|02
+```
+**Scoring**: Linear rank-decay: `(8 - (rank - 1)) / 8` → Rank 1=1.0, Rank 2=0.875, ...
+
+### Door (`door_predictions.csv`)
+```csv
+start_time,end_time,prediction
+2024-01-15 08:00:00,2024-01-15 08:00:15,Normal
+2024-01-15 08:15:30,2024-01-15 08:15:45,Abnormal resistance
+```
+**Scoring**: IoU-weighted F1 (timing + label accuracy)
+
+## Data Requirements
+
+Place data in:
+```
+data/
+├── ACV/
+│   ├── Train/              # 6 .xlsx files + Train_Labels.csv
+│   └── Test/               # acv_test_case.xlsx
+└── Door/
+    ├── Train/              # Door training data
+    └── Test.csv            # Continuous test stream
+```
+
+## Key Innovations
+
+### ACV
+- **Cross-car differential features**: Z-scores and fleet ranks exploit "only 1 faulty car per train"
+- **Physics-informed features**: Pressure ratios, delta-T, control deviations when available
+- **Multi-model ensemble**: Supervised ranking + unsupervised anomaly + metric learning
+- **Schema-agnostic**: Handles both 8-param and 59-param file formats
+
+### Door
+- **PELT change-point detection**: Accurate door cycle segmentation
+- **Segment-level features**: Shape, energy, physics-informed
+- **IoU-aware post-processing**: Optimizes segment boundaries for scoring metric
+
+## Performance
+
+| Subsystem | Validation Score | Method |
+|-----------|------------------|--------|
+| ACV | 1.000 (LOCO-CV) | 5-model ensemble |
+| Door | TBD (CV) | Segmentation + Ensemble |
+
+## License
+For NebulaX 2026 Hackathon submission only.

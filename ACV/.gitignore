@@ -1,0 +1,23 @@
+# Data files (too large for git)
+data/Train/*.xlsx
+data/Test/*.xlsx
+data/Train/*.parquet
+data/Test/*.parquet
+
+# Model files (large)
+models/*.pkl
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Results
+results/*.pkl
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
