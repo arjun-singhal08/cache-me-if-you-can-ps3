@@ -20,15 +20,39 @@ class ACVDataLoader:
         return pd.read_csv(self.labels_path)
     
     def load_case(self, filepath) -> pd.DataFrame:
-        """Load a single case file (prefers parquet for speed)."""
-        filepath = Path(filepath)
-        # Try parquet first
-        parquet_path = filepath.with_suffix('.parquet')
-        if parquet_path.exists():
-            df = pd.read_parquet(parquet_path)
+        """Load a single case file (accepts Path, str, or file-like/BytesIO object; prefers parquet for speed)."""
+        if hasattr(filepath, 'read'):
+            try:
+                df = pd.read_excel(filepath)
+            except Exception as e:
+                raise ValueError(f"Invalid ACV workbook or unreadable Excel content: {e}")
         else:
-            df = pd.read_excel(filepath)
-        df['Time'] = pd.to_datetime(df['Time'])
+            filepath = Path(filepath)
+            if not filepath.exists():
+                raise FileNotFoundError(f"ACV case file does not exist: {filepath}")
+            # Try parquet first
+            parquet_path = filepath.with_suffix('.parquet')
+            if parquet_path.exists():
+                df = pd.read_parquet(parquet_path)
+            else:
+                try:
+                    df = pd.read_excel(filepath)
+                except Exception as e:
+                    raise ValueError(f"Invalid ACV workbook or unreadable Excel content in {filepath.name}: {e}")
+
+        # Validate Time column
+        if 'Time' not in df.columns:
+            time_cols = [c for c in df.columns if str(c).strip().lower() == 'time']
+            if time_cols:
+                df = df.rename(columns={time_cols[0]: 'Time'})
+            else:
+                raise ValueError(f"Required telemetry column 'Time' is missing from ACV workbook.")
+
+        try:
+            df['Time'] = pd.to_datetime(df['Time'])
+        except Exception as e:
+            raise ValueError(f"Failed to parse 'Time' column timestamps into datetime: {e}")
+
         df = df.sort_values('Time').reset_index(drop=True)
         return df
     

@@ -224,6 +224,15 @@ def validate_csv(csv_path: Path, subsystem: str) -> bool:
         if df.isna().any().any():
             print("[ACV FAIL] Contains NaN values")
             return False
+        for val in df['ranked_cars']:
+            cars = [c.strip() for c in str(val).split('|')]
+            if len(cars) != 8:
+                print(f"[ACV FAIL] Expected 8 ranked cars, found {len(cars)} in '{val}'")
+                return False
+            expected_set = {'01', '02', '03', '04', '05', '06', '07', '08'}
+            if set(cars) != expected_set:
+                print(f"[ACV FAIL] Invalid car set: {set(cars)} != {expected_set}")
+                return False
         print(f"[ACV PASS] Validated {len(df)} rows. Columns: {list(df.columns)}")
 
     return True

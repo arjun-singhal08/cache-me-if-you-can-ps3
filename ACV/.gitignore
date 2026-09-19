@@ -4,8 +4,8 @@ data/Test/*.xlsx
 data/Train/*.parquet
 data/Test/*.parquet
 
-# Model files (large)
-models/*.pkl
+# Model files (production models tracked; ignore scratch/checkpoints)
+# models/*.pkl
 
 # Python cache
 __pycache__/

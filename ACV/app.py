@@ -17,9 +17,14 @@ from models import (
 )
 
 
+DEFAULT_MODEL_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "models")
+
+
 @st.cache_resource
-def load_models(model_dir: str = "models"):
+def load_models(model_dir: str = None):
     """Load all trained models and metadata."""
+    if model_dir is None:
+        model_dir = DEFAULT_MODEL_DIR
     metadata = joblib.load(os.path.join(model_dir, 'ensemble_metadata.pkl'))
     weights = metadata['weights']
     feature_names = metadata['feature_names']
@@ -78,11 +83,8 @@ def build_test_features(test_df: pd.DataFrame, feature_names: list):
         test_car_ids.append(car_id)
     
     test_feat_df = pd.DataFrame(test_features)
-    
-    for col in feature_names:
-        if col not in test_feat_df.columns:
-            test_feat_df[col] = 0
-    test_feat_df = test_feat_df[feature_names].fillna(0).replace([np.inf, -np.inf], 0)
+    test_feat_df = test_feat_df.reindex(columns=feature_names, fill_value=0.0)
+    test_feat_df = test_feat_df.fillna(0.0).replace([np.inf, -np.inf], 0.0)
     
     return test_feat_df.values, test_car_ids, car_dfs
 
