@@ -12,7 +12,7 @@ from typing import Dict, Any, List, Optional
 from models.backbone import MultiScaleCNN
 from models.heads import SideClassificationHead, DecisionFusion
 from utils.metrics import MacroF1Metric, PerClassF1Metric
-from losses import FocalLoss
+from .losses import FocalLoss
 
 
 class RailCorrugationModel(pl.LightningModule):

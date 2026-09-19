@@ -14,6 +14,7 @@ __pycache__/
 data/
 ACV/data/
 Door/data/
+PS3/
 
 # IDE
 .vscode/
@@ -29,3 +30,12 @@ Thumbs.db
 # Large raw data files
 *.parquet
 *.xlsx
+
+# Large model artifacts (use DVC or model registry in production)
+*.joblib
+*.pkl
+*.ckpt
+
+# Predictions output (generated)
+predictions/
+predictions.zip

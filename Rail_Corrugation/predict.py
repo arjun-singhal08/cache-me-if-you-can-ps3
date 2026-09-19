@@ -1,208 +1,82 @@
 """
-Inference script for rail corrugation detection.
+Inference script for rail corrugation detection using joblib model.
 Required CLI: predict.py --input <test_folder> --output <predictions.csv>
 """
 
 import os
 import sys
 import argparse
-import yaml
-import torch
+import joblib
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from utils.angle_resample import preprocess_file
-from models.model import RailCorrugationModel
-
-
-def load_config(config_path: str) -> dict:
-    with open(config_path, 'r') as f:
-        config = yaml.safe_load(f)
-    return ConfigDict(config)
-
-
-class ConfigDict(dict):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        for k, v in self.items():
-            if isinstance(v, dict):
-                self[k] = ConfigDict(v)
-    
-    def __getattr__(self, key):
-        try:
-            return self[key]
-        except KeyError:
-            raise AttributeError(f"'ConfigDict' object has no attribute '{key}'")
-
-
-def load_model(checkpoint_path: str, config) -> RailCorrugationModel:
-    """Load model from checkpoint."""
-    model = RailCorrugationModel.load_from_checkpoint(checkpoint_path, config=config, map_location='cpu', weights_only=False)
-    model.eval()
-    model.freeze()
-    return model
-
-
-def preprocess_test_file(filepath: str, config, norm_stats) -> dict:
-    """Preprocess a single test file."""
-    side_i, side_ii = preprocess_file(
-        filepath,
-        target_num_samples=config.data.target_num_samples
-    )
-    
-    # Convert to tensors: [T, C] -> [C, T]
-    side_i = torch.from_numpy(side_i).float().transpose(0, 1).unsqueeze(0)  # [1, 64, T]
-    side_ii = torch.from_numpy(side_ii).float().transpose(0, 1).unsqueeze(0)  # [1, 64, T]
-    
-    # Normalize
-    mean = norm_stats['mean'].view(1, -1, 1)
-    std = norm_stats['std'].view(1, -1, 1)
-    side_i = (side_i - mean) / (std + 1e-8)
-    side_ii = (side_ii - mean) / (std + 1e-8)
-    
-    return {"side_i": side_i, "side_ii": side_ii}
-
-
-def apply_tta(model, data, config) -> list:
-    """Apply test-time augmentation."""
-    tta_probs = []
-    device = next(model.parameters()).device
-    
-    side_i = data["side_i"].to(device)
-    side_ii = data["side_ii"].to(device)
-    
-    # Original
-    with torch.no_grad():
-        logits_i, logits_ii, fused = model(side_i, side_ii)
-        probs = torch.softmax(fused, dim=1)
-        tta_probs.append(probs.cpu())
-    
-    if not config.ensemble.tta:
-        return tta_probs
-    
-    # Flip augmentation
-    if "flip" in config.ensemble.tta_augments:
-        with torch.no_grad():
-            logits_i, logits_ii, fused = model(
-                torch.flip(side_i, dims=[2]),
-                torch.flip(side_ii, dims=[2])
-            )
-            probs = torch.softmax(fused, dim=1)
-            tta_probs.append(probs.cpu())
-    
-    # Noise augmentation
-    if "noise" in config.ensemble.tta_augments:
-        noise_std = config.augment.gaussian_noise_std
-        with torch.no_grad():
-            noisy_i = side_i + torch.randn_like(side_i) * noise_std
-            noisy_ii = side_ii + torch.randn_like(side_ii) * noise_std
-            logits_i, logits_ii, fused = model(noisy_i, noisy_ii)
-            probs = torch.softmax(fused, dim=1)
-            tta_probs.append(probs.cpu())
-    
-    # Shift augmentation
-    if "shift" in config.ensemble.tta_augments:
-        shift = config.data.target_num_samples // 20  # ~5%
-        with torch.no_grad():
-            shifted_i = torch.roll(side_i, shifts=shift, dims=2)
-            shifted_ii = torch.roll(side_ii, shifts=shift, dims=2)
-            logits_i, logits_ii, fused = model(shifted_i, shifted_ii)
-            probs = torch.softmax(fused, dim=1)
-            tta_probs.append(probs.cpu())
-    
-    return tta_probs
-
-
-def predict_ensemble(model_paths, test_dir, output_csv, config_path):
-    """Run ensemble prediction on test files."""
-    
-    config = load_config(config_path)
-    
-    # Load normalization stats from first model
-    first_checkpoint = torch.load(model_paths[0], map_location='cpu', weights_only=False)
-    norm_stats = first_checkpoint.get('norm_stats', None)
-    
-    if norm_stats is None:
-        # Compute from training data if not saved
-        print("Warning: No normalization stats in checkpoint. Computing from training data...")
-        from data.dataset import get_dataloaders
-        _, _, norm_stats = get_dataloaders(config)
-    
-    # Load all models
-    models = []
-    for path in model_paths:
-        print(f"Loading model: {path}")
-        model = load_model(path, config)
-        models.append(model)
-    
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    for m in models:
-        m.to(device)
-    
-    # Get test files
-    test_files = sorted([f for f in os.listdir(test_dir) if f.endswith(".csv")])
-    print(f"Found {len(test_files)} test files")
-    
-    results = []
-    label_map = {0: "Normal", 1: "Side I", 2: "Side II"}
-    
-    for fname in tqdm(test_files, desc="Predicting"):
-        fpath = os.path.join(test_dir, fname)
-        
-        # Preprocess
-        data = preprocess_test_file(fpath, config, norm_stats)
-        
-        # Ensemble prediction with TTA
-        all_probs = []
-        for model in models:
-            tta_probs = apply_tta(model, data, config)
-            all_probs.extend(tta_probs)
-        
-        # Average all predictions
-        avg_probs = torch.stack(all_probs).mean(dim=0)  # [1, 3]
-        pred_idx = avg_probs.argmax(dim=1).item()
-        pred_label = label_map[pred_idx]
-        
-        results.append({"file_id": fname, "prediction": pred_label})
-    
-    # Save predictions
-    df = pd.DataFrame(results)
-    df.to_csv(output_csv, index=False)
-    print(f"\nSaved predictions to {output_csv}")
-    print(f"Prediction distribution: {df['prediction'].value_counts().to_dict()}")
-    
-    return df
+from src.features import load_and_extract
 
 
 def main():
     parser = argparse.ArgumentParser(description="Predict rail corrugation faults")
     parser.add_argument("--input", type=str, required=True, help="Test data directory")
     parser.add_argument("--output", type=str, required=True, help="Output CSV file")
-    parser.add_argument("--config", type=str, default="config.yaml", help="Config file")
-    parser.add_argument("--models", type=str, nargs="+", help="Model checkpoint paths")
-    parser.add_argument("--model_dir", type=str, default="checkpoints", help="Model directory (for auto-discovery)")
+    parser.add_argument("--model", type=str, default=None, help="Model path (default: models/rail_best_model_final.joblib)")
     
     args = parser.parse_args()
     
-    # Auto-discover model checkpoints if not specified
-    if args.models is None:
-        model_files = sorted([
-            os.path.join(args.model_dir, f) 
-            for f in os.listdir(args.model_dir) 
-            if f.endswith(".ckpt") and "rail-" in f
-        ])
-        if not model_files:
-            raise FileNotFoundError(f"No model checkpoints found in {args.model_dir}")
-        # Use top 5 models
-        model_files = model_files[-5:]
-    else:
-        model_files = args.models
+    # Resolve model path
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    model_path = args.model or os.path.join(base_dir, "models", "rail_best_model_final.joblib")
     
-    print(f"Using models: {model_files}")
-    predict_ensemble(model_files, args.input, args.output, args.config)
+    if not os.path.exists(model_path):
+        raise FileNotFoundError(f"Model not found: {model_path}")
+    
+    print(f"Loading model from {model_path}...")
+    model = joblib.load(model_path)
+    
+    # Load optimal thresholds if available
+    thresholds_path = os.path.join(base_dir, "models", "rail_optimal_thresholds_final.joblib")
+    if os.path.exists(thresholds_path):
+        thresholds = joblib.load(thresholds_path)
+        print(f"Loaded optimal thresholds: {thresholds}")
+    else:
+        thresholds = None
+    
+    # Get test files
+    test_files = sorted([f for f in os.listdir(args.input) if f.endswith(".csv")])
+    print(f"Found {len(test_files)} test files")
+    
+    label_map = {0: "Normal", 1: "Side I", 2: "Side II"}
+    
+    results = []
+    for fname in tqdm(test_files, desc="Predicting"):
+        fpath = os.path.join(args.input, fname)
+        
+        # Extract features
+        try:
+            feats, names = load_and_extract(fpath)
+        except Exception as e:
+            print(f"Error extracting features from {fname}: {e}")
+            results.append({"file_id": fname, "prediction": "Normal"})
+            continue
+        
+        # Predict
+        pred_idx = model.predict(feats.reshape(1, -1))[0]
+        
+        # Apply thresholds if available (for probabilistic models)
+        if hasattr(model, "predict_proba") and thresholds is not None:
+            proba = model.predict_proba(feats.reshape(1, -1))[0]
+            # Apply threshold logic if needed
+            pred_idx = np.argmax(proba)
+        
+        pred_label = label_map.get(int(pred_idx), "Normal")
+        results.append({"file_id": fname, "prediction": pred_label})
+    
+    # Save predictions
+    df = pd.DataFrame(results)
+    df.to_csv(args.output, index=False)
+    print(f"\nSaved predictions to {args.output}")
+    print(f"Prediction distribution: {df['prediction'].value_counts().to_dict()}")
 
 
 if __name__ == "__main__":
