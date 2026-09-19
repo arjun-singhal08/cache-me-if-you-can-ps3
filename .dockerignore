@@ -1,0 +1,7 @@
+PS3/02_Datasets/
+data/
+.git
+__pycache__/
+*.pyc
+.venv
+.env
