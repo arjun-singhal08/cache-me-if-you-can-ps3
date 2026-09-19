@@ -19,6 +19,7 @@ Key upgrades for breaking Macro-F1 plateau:
 3. Existing features preserved + new physics-grounded features
 """
 
+from pathlib import Path
 import numpy as np
 import pandas as pd
 from scipy import signal, stats, integrate
@@ -613,10 +614,20 @@ def load_and_extract(filepath: str) -> Tuple[np.ndarray, List[str]]:
 
 
 if __name__ == "__main__":
-    test_file = "/Users/Arjun Singhal/NebulaX-Hackathon-ProblemStatement/PS3/02_Datasets/Rail_Corrugation/Train/Train1.csv"
-    feats, names = load_and_extract(test_file)
-    print(f"Feature vector shape: {feats.shape}")
-    print(f"Number of features: {len(names)}")
-    print(f"Feature names: {names[:20]}...")
-    print(f"Any NaN: {np.any(np.isnan(feats))}")
-    print(f"Any Inf: {np.any(np.isinf(feats))}")
+    base_dir = Path(__file__).resolve().parents[2]
+    candidates = [
+        base_dir / "PS3" / "02_Datasets" / "Rail_Corrugation" / "Train" / "Train1.csv",
+        base_dir / "data" / "Rail_Corrugation" / "Train" / "Train1.csv",
+        base_dir.parent / "NebulaX-Hackathon-ProblemStatement" / "PS3" / "02_Datasets" / "Rail_Corrugation" / "Train" / "Train1.csv",
+        Path.home() / "NebulaX-Hackathon-ProblemStatement" / "PS3" / "02_Datasets" / "Rail_Corrugation" / "Train" / "Train1.csv",
+    ]
+    test_file = next((str(p) for p in candidates if p.exists()), None)
+    if test_file:
+        feats, names = load_and_extract(test_file)
+        print(f"Feature vector shape: {feats.shape}")
+        print(f"Number of features: {len(names)}")
+        print(f"Feature names: {names[:20]}...")
+        print(f"Any NaN: {np.any(np.isnan(feats))}")
+        print(f"Any Inf: {np.any(np.isinf(feats))}")
+    else:
+        print("Sample Train1.csv not found locally; skipping extraction run.")

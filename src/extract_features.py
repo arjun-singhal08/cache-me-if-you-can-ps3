@@ -1,5 +1,6 @@
 import os
 import glob
+from pathlib import Path
 import numpy as np
 import pandas as pd
 from scipy import stats
@@ -153,8 +154,23 @@ def process_directory(data_dir: str, n_jobs: int = -1) -> pd.DataFrame:
     return res_df[cols]
 
 if __name__ == '__main__':
-    train_dir = r"C:\Users\Arjun Singhal\NebulaX-Hackathon-ProblemStatement\PS3\02_Datasets\SHM\Train"
-    test_dir = r"C:\Users\Arjun Singhal\NebulaX-Hackathon-ProblemStatement\PS3\02_Datasets\SHM\Test"
+    base_dir = Path(__file__).resolve().parents[1]
+    candidates_train = [
+        base_dir / "PS3" / "02_Datasets" / "SHM" / "Train",
+        base_dir / "data" / "SHM" / "Train",
+        base_dir.parent / "NebulaX-Hackathon-ProblemStatement" / "PS3" / "02_Datasets" / "SHM" / "Train",
+        Path.home() / "NebulaX-Hackathon-ProblemStatement" / "PS3" / "02_Datasets" / "SHM" / "Train",
+    ]
+    train_dir = next((str(p) for p in candidates_train if p.exists()), str(candidates_train[0]))
+
+    candidates_test = [
+        base_dir / "PS3" / "02_Datasets" / "SHM" / "Test",
+        base_dir / "data" / "SHM" / "Test",
+        base_dir.parent / "NebulaX-Hackathon-ProblemStatement" / "PS3" / "02_Datasets" / "SHM" / "Test",
+        Path.home() / "NebulaX-Hackathon-ProblemStatement" / "PS3" / "02_Datasets" / "SHM" / "Test",
+    ]
+    test_dir = next((str(p) for p in candidates_test if p.exists()), str(candidates_test[0]))
+
     output_dir = "data_processed"
     os.makedirs(output_dir, exist_ok=True)
     

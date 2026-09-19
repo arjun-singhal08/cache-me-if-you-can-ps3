@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 import joblib
 import numpy as np
 import pandas as pd
@@ -21,7 +22,14 @@ def compute_metrics(y_true, y_pred):
 
 def train_and_evaluate():
     features_path = "data_processed/train_features.csv"
-    labels_path = r"C:\Users\Arjun Singhal\NebulaX-Hackathon-ProblemStatement\PS3\02_Datasets\SHM\Train_Labels.csv"
+    base_dir = Path(__file__).resolve().parents[1]
+    candidates_labels = [
+        base_dir / "PS3" / "02_Datasets" / "SHM" / "Train_Labels.csv",
+        base_dir / "data" / "SHM" / "Train_Labels.csv",
+        base_dir.parent / "NebulaX-Hackathon-ProblemStatement" / "PS3" / "02_Datasets" / "SHM" / "Train_Labels.csv",
+        Path.home() / "NebulaX-Hackathon-ProblemStatement" / "PS3" / "02_Datasets" / "SHM" / "Train_Labels.csv",
+    ]
+    labels_path = next((str(p) for p in candidates_labels if p.exists()), str(candidates_labels[0]))
     
     if not os.path.exists(features_path):
         raise FileNotFoundError(f"Feature file {features_path} not found. Run extract_features.py first.")

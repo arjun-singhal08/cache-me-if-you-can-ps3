@@ -1,6 +1,7 @@
 import os
 import io
 import glob
+from pathlib import Path
 import numpy as np
 import pandas as pd
 import streamlit as st
@@ -93,7 +94,12 @@ if subsystem.startswith("Subsystem 1:"):
             input_filename = uploaded_file.name
             
     with input_tab2:
-        test_dir = r"C:\Users\Arjun Singhal\NebulaX-Hackathon-ProblemStatement\PS3\02_Datasets\SHM\Test"
+        candidate_test_dirs = [
+            Path(__file__).resolve().parent / "PS3" / "02_Datasets" / "SHM" / "Test",
+            Path(__file__).resolve().parents[1] / "NebulaX-Hackathon-ProblemStatement" / "PS3" / "02_Datasets" / "SHM" / "Test",
+            Path.home() / "NebulaX-Hackathon-ProblemStatement" / "PS3" / "02_Datasets" / "SHM" / "Test",
+        ]
+        test_dir = next((str(p) for p in candidate_test_dirs if p.exists()), str(candidate_test_dirs[0]))
         if os.path.exists(test_dir):
             test_files = sorted([f for f in os.listdir(test_dir) if f.endswith('.csv')])
             chosen_file = st.selectbox("Select test signal:", test_files)

@@ -1,7 +1,12 @@
 import sys
+from pathlib import Path
 import numpy as np
 import pandas as pd
-sys.path.insert(0, r'C:\Users\Arjun Singhal\NebulaX-Hackathon-ProblemStatement\PS3\02_Datasets\Door\app')
+
+door_dir = Path(__file__).resolve().parent
+if str(door_dir) not in sys.path:
+    sys.path.insert(0, str(door_dir))
+
 from utils.io import load_train_data
 from utils.metrics import evaluate_segmentation, compute_soft_f1
 from segmentation.detector import DoorSegmenter
@@ -12,9 +17,20 @@ from sklearn.preprocessing import RobustScaler
 from xgboost import XGBClassifier
 from sklearn.model_selection import StratifiedKFold
 
+candidate_dirs = [
+    door_dir.parent / "PS3" / "02_Datasets" / "Door",
+    door_dir.parents[1] / "NebulaX-Hackathon-ProblemStatement" / "PS3" / "02_Datasets" / "Door",
+    door_dir.parent / "data" / "Door",
+    Path.home() / "NebulaX-Hackathon-ProblemStatement" / "PS3" / "02_Datasets" / "Door",
+]
+data_dir = next((p for p in candidate_dirs if (p / "Train.csv").exists() and (p / "Train_Segments_Answer.csv").exists()), None)
+if data_dir is None:
+    print("Door dataset not found; exiting cv_eval.")
+    sys.exit(0)
+
 train, segments = load_train_data(
-    r'C:\Users\Arjun Singhal\NebulaX-Hackathon-ProblemStatement\PS3\02_Datasets\Door\Train.csv',
-    r'C:\Users\Arjun Singhal\NebulaX-Hackathon-ProblemStatement\PS3\02_Datasets\Door\Train_Segments_Answer.csv'
+    str(data_dir / "Train.csv"),
+    str(data_dir / "Train_Segments_Answer.csv")
 )
 
 config = {
