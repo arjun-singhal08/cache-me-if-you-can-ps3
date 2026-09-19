@@ -3,6 +3,7 @@ ASTM E1049-85 Rainflow Cycle Counting with Mean-Stress Correction
 Multi-Exponent Palmgren-Miner Damage + Spectral Fatigue Estimators
 """
 import numpy as np
+import pandas as pd
 from numba import njit, prange
 from typing import Tuple, Dict, List, Optional
 from scipy import signal
