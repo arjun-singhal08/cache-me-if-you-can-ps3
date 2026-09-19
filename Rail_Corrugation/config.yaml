@@ -1,0 +1,56 @@
+# Rail Corrugation - Configuration
+data:
+  train_dir: "../NebulaX-Hackathon-ProblemStatement/PS3/02_Datasets/Rail_Corrugation/Train"
+  test_dir: "../NebulaX-Hackathon-ProblemStatement/PS3/02_Datasets/Rail_Corrugation/Test"
+  labels_csv: "../NebulaX-Hackathon-ProblemStatement/PS3/02_Datasets/Rail_Corrugation/Train_Labels.csv"
+  val_split: 0.2
+  seed: 42
+  angle_resolution_deg: 2.0
+  wheel_diameter_m: 0.85
+  teeth_per_rev: 90
+  num_samples_per_rev: 180  # 360 / 2.0
+  target_num_samples: 1800  # ~10 revs at typical speed
+  cache_dir: "cache_signals"
+  feature_cache_dir: "cache_features"
+
+model:
+  in_channels: 64  # Per side: 32 axle boxes * 2 (vib + shock)
+  base_channels: 64
+  num_classes: 3
+  dropout: 0.3
+  attention_dim: 256
+  use_se: true
+  num_residual_blocks: 3
+  kernel_sizes: [3, 7, 15, 31]
+
+train:
+  batch_size: 16
+  max_epochs: 100
+  lr: 0.0003
+  weight_decay: 0.0001
+  warmup_epochs: 5
+  patience: 15
+  gradient_accumulation: 4
+  num_workers: 4
+  pin_memory: true
+  precision: "32-true"
+
+loss:
+  focal_gamma: 2.0
+  class_weights: [1.0, 16.71, 9.75]  # Normal, Side_I, Side_II
+  aux_weight: 0.3
+
+augment:
+  gaussian_noise_std: 0.01
+  angle_shift_max_deg: 10.0
+  mixup_alpha: 0.2
+  channel_dropout_p: 0.1
+
+ensemble:
+  num_seeds: 5
+  tta: true
+  tta_augments: ["original", "flip", "noise", "shift"]
+
+output:
+  model_dir: "checkpoints"
+  predictions_csv: "rail_predictions.csv"
