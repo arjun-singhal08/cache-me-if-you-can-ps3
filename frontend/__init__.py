@@ -1,0 +1,1 @@
+"""Senlytics frontend package."""
